@@ -1,0 +1,123 @@
+services:
+
+  minio:
+    image: minio/minio@sha256:d051d800a3025588f37f69f132bb5ef718547a9a4ee95ddee44e04ad952a0a96
+    container_name: minio-osd
+    command: server /data --console-address ':9001' --address ':9000'
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      MINIO_ROOT_USER: $MINIO_ACCESS_KEY
+      MINIO_ROOT_PASSWORD: $MINIO_SECRET_KEY
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: curl -f --output /dev/null --silent http://localhost:9000/minio/health/live
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+
+  # minio-bucket-creator:
+  #   image: minio/mc
+  #   container_name: minio-bucket-creator-osd
+  #   entrypoint: sh
+  #   command: >
+  #     mc config host add minio http://minio:9000 
+  #     $MINIO_ACCESS_KEY $MINIO_SECRET_KEY 
+  #     && mc mb minio/$MINIO_BUCKET_NAME
+  #   depends_on:
+  #     minio:
+  #       condition: service_healthy
+  
+  python-bucket-creator:
+    build: minio-bucket-creator
+    container_name: python-bucket-creator-geo
+    environment:
+      AWS_ACCESS_KEY: $MINIO_ACCESS_KEY
+      AWS_SECRET_KEY: $MINIO_SECRET_KEY
+      MINIO_SERVER: "http://minio:9000"
+      BUCKET_NAME: $MINIO_BUCKET_NAME
+
+      DESTINATION__FILESYSTEM__BUCKET_URL: "s3://$MINIO_BUCKET_NAME"
+      DESTINATION__FILESYSTEM__AWS_ENDPOINT_URL: "http://minio:9000"
+      DESTINATION__FILESYSTEM__AWS_ACCESS_KEY_ID: $MINIO_ACCESS_KEY
+      DESTINATION__FILESYSTEM__AWS_SECRET_ACCESS_KEY: $MINIO_SECRET_KEY
+    depends_on:
+      minio:
+        condition: service_healthy
+
+
+  # postgres:
+  #   image: postgres:15.3-alpine
+  #   container_name: postgres-osd
+  #   environment:
+  #     POSTGRES_USER: prefect
+  #     POSTGRES_PASSWORD: prefect
+  #     POSTGRES_DB: prefect
+  #   ports:
+  #     - 5432:5432
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U prefect"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+
+  # pgadmin:
+  #   image: dpage/pgadmin4:7.7
+  #   container_name: pgadmin-osd
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: $PGADMIN_DEFAULT_EMAIL
+  #     PGADMIN_DEFAULT_PASSWORD: $PGADMIN_DEFAULT_PASSWORD
+  #   ports:
+  #     - 8080:80
+  #   depends_on:
+  #     - postgres
+
+
+  # prefect:
+  #   build:
+  #     context: ./prefect-server
+  #     dockerfile: Dockerfile
+  #   container_name: prefect-osd
+  #   command: prefect server start --no-ui --host 0.0.0.0
+  #   ports:
+  #     - 4200:4200
+  #   environment:
+  #     PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres/prefect
+  #     PREFECT_API_HOST:
+
+
+
+  worker:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile
+    container_name: worker-osd
+    environment:
+      # PREFECT_API_URL: http://prefect:4200
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: $MINIO_ACCESS_KEY
+      MINIO_SECRET_KEY: $MINIO_SECRET_KEY
+      MINIO_BUCKET_NAME: $MINIO_BUCKET_NAME
+      #
+      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: $MINIO_ACCESS_KEY
+      AWS_SECRET_ACCESS_KEY: $MINIO_SECRET_KEY
+      AWS_S3_BUCKET: $MINIO_BUCKET_NAME
+      #
+      START_DATE: $START_DATE
+    depends_on:
+      minio:
+        condition: service_healthy
+      # prefect:
+      #   condition: service_healthy
+
+
+
+volumes:  
+  minio_data:

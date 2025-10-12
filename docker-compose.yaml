@@ -30,7 +30,8 @@ services:
   #   depends_on:
   #     minio:
   #       condition: service_healthy
-  
+
+
   python-bucket-creator:
     build: minio-bucket-creator
     container_name: python-bucket-creator-geo
@@ -47,6 +48,55 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+
+
+
+  postgis:
+    image: postgis/postgis:17-3.5
+    container_name: postgis-osd
+    environment:
+      POSTGIS_PASSWORD: $POSTGRES_PASSWORD
+      POSTGIS_USER: $POSTGRES_USER
+      POSTGIS_DB: $POSTGRES_DB
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+
+  dremio:
+    image: dremio/dremio-oss:26.0 # Or specify a particular version
+    container_name: dremio-osd
+    ports:
+      - "9047:9047" # Dremio UI
+      - "31010:31010" # Dremio client port
+    volumes:
+      - dremio_data:/opt/dremio/data # Persistent storage for Dremio data
+    environment:
+      DREMIO_HEAP_SIZE_MB: 4096
+      DREMIO_MAX_DIRECT_MEMORY_MB: 8192
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9047"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+
+  sedona:
+    image: apache/sedona:1.7.2
+    container_name: sedona
+    ports:
+      - "4040:4040"
+      - "7077:7077"
+      - "8080:8080"
+      - "8081:8081"
+      - "8085:8085"
+      - "8888:8888"
+    environment:
+      DRIVER_MEM: 6g
+      EXECUTOR_MEM: 8g
+    volumes:
+      - sedona_data:/opt
 
 
   # postgres:
@@ -93,31 +143,39 @@ services:
 
 
 
-  worker:
-    build:
-      context: ./workers
-      dockerfile: Dockerfile
-    container_name: worker-osd
-    environment:
-      # PREFECT_API_URL: http://prefect:4200
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: $MINIO_ACCESS_KEY
-      MINIO_SECRET_KEY: $MINIO_SECRET_KEY
-      MINIO_BUCKET_NAME: $MINIO_BUCKET_NAME
-      #
-      AWS_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: $MINIO_ACCESS_KEY
-      AWS_SECRET_ACCESS_KEY: $MINIO_SECRET_KEY
-      AWS_S3_BUCKET: $MINIO_BUCKET_NAME
-      #
-      START_DATE: $START_DATE
-    depends_on:
-      minio:
-        condition: service_healthy
-      # prefect:
-      #   condition: service_healthy
+  # worker:
+  #   build:
+  #     context: ./workers
+  #     dockerfile: Dockerfile
+  #   container_name: worker-osd
+  #   environment:
+  #     # PREFECT_API_URL: http://prefect:4200
+  #     MINIO_ENDPOINT: http://minio:9000
+  #     MINIO_ACCESS_KEY: $MINIO_ACCESS_KEY
+  #     MINIO_SECRET_KEY: $MINIO_SECRET_KEY
+  #     MINIO_BUCKET_NAME: $MINIO_BUCKET_NAME
+  #     #
+  #     AWS_ENDPOINT_URL: http://minio:9000
+  #     AWS_ACCESS_KEY_ID: $MINIO_ACCESS_KEY
+  #     AWS_SECRET_ACCESS_KEY: $MINIO_SECRET_KEY
+  #     AWS_S3_BUCKET: $MINIO_BUCKET_NAME
+  #     #
+  #     POSTGIS_PASSWORD: $POSTGIS_PASSWORD
+  #     POSTGIS_USER: $POSTGIS_USER
+  #     POSTGIS_DB: $POSTGIS_DB
+  #     POSTGIS_HOST: $POSTGIS_HOST
+  #     POSTGIS_PORT: $POSTGIS_PORT
+  #     #
+  #     START_DATE: $START_DATE
+  #   depends_on:
+  #     minio:
+  #       condition: service_healthy
+  #     # prefect:
+  #     #   condition: service_healthy
 
 
 
 volumes:  
   minio_data:
+  dremio_data:
+  sedona_data:
